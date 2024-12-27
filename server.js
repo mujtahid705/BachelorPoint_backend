@@ -2,6 +2,8 @@ import express from "express";
 import dotenv from "dotenv";
 import mysql from "mysql";
 import cors from "cors";
+import path from "path";
+import { fileURLToPath } from "url";
 
 import userController from "./controllers/userController.js";
 // import postController from "./controllers/postController.js";
@@ -9,6 +11,9 @@ import userController from "./controllers/userController.js";
 dotenv.config();
 const PORT = process.env.PORT || 5001;
 const app = express();
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // Database Connection
 export const db = mysql.createConnection({
@@ -27,11 +32,19 @@ db.connect((err) => {
 });
 
 // Middleware
-app.use(express.json());
+// app.use(express.json());
+app.use(express.json({ limit: "50mb" })); // Increase payload size limit
+app.use(express.urlencoded({ limit: "50mb", extended: true })); // Increase payload size limit for URL-encoded data
 app.use(
   cors({
     origin: "http://localhost:3000",
+    methods: "GET,HEAD,PUT,PATCH,POST,DELETE",
+    credentials: true,
   })
+);
+app.use(
+  "/uploads",
+  express.static(path.join(__dirname, "controllers", "uploads"))
 );
 
 // Routes
