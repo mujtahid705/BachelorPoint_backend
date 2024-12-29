@@ -148,9 +148,8 @@ const loginUser = async (req, res) => {
         }
 
         const token = jwt.sign(
-          { id: user.id, email: user.email },
-          process.env.JWT_SECRET,
-          { expiresIn: "1h" }
+          { studentId: user.studentId, email: user.email, type: user.type },
+          process.env.JWT_SECRET
         );
 
         return res.json({
@@ -165,7 +164,7 @@ const loginUser = async (req, res) => {
   }
 };
 
-// get self data by token
+// Get self data by token
 const selfData = async (req, res) => {
   const { email } = req.user;
 
@@ -173,8 +172,191 @@ const selfData = async (req, res) => {
     if (err) {
       return res.status(400).json({ error: err });
     }
-    return res.json(result[0]);
+    const { name, email, studentId, bio, dp, gender, type, idCard, status } =
+      result[0];
+    return res.json({
+      name,
+      email,
+      studentId,
+      bio,
+      dp,
+      gender,
+      type,
+      idCard,
+      status,
+    });
   });
+};
+
+// Approve user by ID
+const approveUser = (req, res) => {
+  const { email } = req.user;
+  const { id } = req.params;
+
+  db.query("SELECT * FROM users WHERE email = ?", [email], (err, result) => {
+    if (err) {
+      return res.status(400).json({ error: err });
+    }
+    const type = result[0].type;
+
+    if (type !== "admin") {
+      return res.status(403).json({ error: "Access denied" });
+    }
+
+    db.query(
+      "UPDATE users SET status = 'approved' WHERE studentId = ?",
+      [id],
+      (err, result) => {
+        if (err) {
+          return res.status(400).json({ error: err });
+        }
+        return res.json({ message: "User approved" });
+      }
+    );
+  });
+};
+
+// Delete user by ID
+const deleteUser = (req, res) => {
+  const { email } = req.user;
+  const { id } = req.params;
+
+  db.query("SELECT * FROM users WHERE email = ?", [email], (err, result) => {
+    if (err) {
+      return res.status(400).json({ error: err });
+    }
+    const type = result[0].type;
+
+    if (type !== "admin") {
+      return res.status(403).json({ error: "Access denied" });
+    }
+
+    db.query("DELETE FROM users WHERE studentId = ?", [id], (err, result) => {
+      if (err) {
+        return res.status(400).json({ error: err });
+      }
+      return res.json({ message: "User deleted successfully" });
+    });
+  });
+};
+
+// Ban user by ID
+const banUser = (req, res) => {
+  const { email } = req.user;
+  const { id } = req.params;
+
+  db.query("SELECT * FROM users WHERE email = ?", [email], (err, result) => {
+    if (err) {
+      return res.status(400).json({ error: err });
+    }
+    const type = result[0].type;
+
+    if (type !== "admin") {
+      return res.status(403).json({ error: "Access denied" });
+    }
+
+    db.query(
+      "UPDATE users SET status = 'not approved', type = 'user' WHERE studentId = ?",
+      [id],
+      (err, result) => {
+        if (err) {
+          return res.status(400).json({ error: err });
+        }
+        return res.json({ message: "User banned" });
+      }
+    );
+  });
+};
+
+// Make admin by ID
+const makeAdmin = (req, res) => {
+  const { type } = req.user;
+  const { id } = req.params;
+
+  if (type !== "admin") {
+    return res.status(403).json({ error: "Access denied" });
+  }
+
+  db.query(
+    "UPDATE users SET type = 'admin' WHERE studentId = ?",
+    [id],
+    (err, result) => {
+      if (err) {
+        return res.status(400).json({ error: err });
+      }
+      return res.json({ message: "New Admin added" });
+    }
+  );
+};
+
+// Update user
+const updateUser = async (req, res) => {
+  const { studentId } = req.user;
+  const { bio, dp } = req.body;
+
+  if (!bio || !dp) {
+    return res.status(400).json({ error: "All fields are required" });
+  }
+
+  try {
+    // Decode base64 image and save it to the filesystem
+    const imageBuffer = Buffer.from(
+      dp.replace(/^data:image\/\w+;base64,/, ""),
+      "base64"
+    );
+    const imagePath = path.join(
+      __dirname,
+      "dp",
+      `${Date.now()}-${studentId}.png`
+    );
+
+    // Ensure the uploads directory exists
+    const uploadsDir = path.join(__dirname, "dp");
+    if (!fs.existsSync(uploadsDir)) {
+      fs.mkdirSync(uploadsDir);
+    }
+
+    // Write the file to the filesystem
+    await writeFile(imagePath, imageBuffer);
+
+    // Store user data in the database, including the image path
+    const relativeImagePath = `dp/${path.basename(imagePath)}`;
+
+    // updating the database
+    db.query(
+      "UPDATE users SET bio = ?, dp = ? WHERE studentId = ?",
+      [bio, relativeImagePath, studentId],
+      (err, result) => {
+        if (err) {
+          console.error("Error updating user:", err);
+
+          // Delete the image if the user update fails
+          fs.unlink(imagePath, (unlinkErr) => {
+            if (unlinkErr) {
+              console.error("Error deleting image:", unlinkErr);
+            } else {
+              console.log("Unnecessary image deleted.");
+            }
+          });
+          return res.status(400).json({ error: err });
+        }
+        console.log("Updated successfully:", result);
+        return res.json({ message: "Updated successfully" });
+      }
+    );
+  } catch (err) {
+    console.error("Error:", err);
+
+    // Delete the image if the user registration fails
+    fs.unlink(imagePath, (unlinkErr) => {
+      if (unlinkErr) {
+        console.error("Error deleting image:", unlinkErr);
+      } else {
+        console.log("Unnecessary image deleted.");
+      }
+    });
+    return res.status(500).json({ error: "Internal server error" });
+  }
 };
 
 // ROUTES
@@ -189,5 +371,20 @@ router.post("/login", loginUser);
 
 // GET user by token (self)
 router.get("/self", authenticateToken, selfData);
+
+// Approve user by ID
+router.get("/approve/:id", authenticateToken, approveUser);
+
+// Delete user by ID
+router.delete("/delete/:id", authenticateToken, deleteUser);
+
+// Ban user by ID
+router.get("/ban/:id", authenticateToken, banUser);
+
+// Make admin by ID
+router.get("/makeadmin/:id", authenticateToken, makeAdmin);
+
+// Update user
+router.put("/update", authenticateToken, updateUser);
 
 export default router;

@@ -33,8 +33,8 @@ db.connect((err) => {
 
 // Middleware
 // app.use(express.json());
-app.use(express.json({ limit: "50mb" })); // Increase payload size limit
-app.use(express.urlencoded({ limit: "50mb", extended: true })); // Increase payload size limit for URL-encoded data
+app.use(express.json({ limit: "50mb" }));
+app.use(express.urlencoded({ limit: "50mb", extended: true }));
 app.use(
   cors({
     origin: "http://localhost:3000",
@@ -46,6 +46,7 @@ app.use(
   "/uploads",
   express.static(path.join(__dirname, "controllers", "uploads"))
 );
+app.use("/dp", express.static(path.join(__dirname, "controllers", "dp")));
 
 // Routes
 app.use("/api/users", userController);
