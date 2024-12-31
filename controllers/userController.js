@@ -359,6 +359,74 @@ const updateUser = async (req, res) => {
   }
 };
 
+// GET contact
+const getContact = (req, res) => {
+  const { id } = req.params;
+  const { studentId } = req.user;
+
+  // Get user info based on studentId
+  db.query(
+    "SELECT * FROM users WHERE studentId = ?",
+    [studentId],
+    (err, userResult) => {
+      if (err) {
+        console.error("Error fetching user info:", err);
+        return res.status(400).json({ error: err });
+      }
+
+      if (userResult.length === 0) {
+        return res.status(404).json({ error: "User not found" });
+      }
+
+      const user = userResult[0];
+
+      // Find the post from posts table based on id
+      db.query("SELECT * FROM posts WHERE id = ?", [id], (err, postResult) => {
+        if (err) {
+          console.error("Error fetching post:", err);
+          return res.status(400).json({ error: err });
+        }
+
+        if (postResult.length === 0) {
+          return res.status(404).json({ error: "Post not found" });
+        }
+
+        const post = postResult[0];
+
+        // Check if the genders match
+        if (user.gender !== post.gender) {
+          return res
+            .status(403)
+            .json({ error: "Access denied due to gender mismatch" });
+        }
+
+        // Find the info of the user whose id is equal to posted_by of the post
+        db.query(
+          "SELECT * FROM users WHERE studentId = ?",
+          [post.posted_by],
+          (err, contactResult) => {
+            if (err) {
+              console.error("Error fetching contact info:", err);
+              return res.status(400).json({ error: err });
+            }
+
+            if (contactResult.length === 0) {
+              return res.status(404).json({ error: "Contact user not found" });
+            }
+
+            const contactUser = contactResult[0];
+            return res.json({
+              name: contactUser.name,
+              email: contactUser.email,
+              studentId: contactUser.studentId,
+            });
+          }
+        );
+      });
+    }
+  );
+};
+
 // ROUTES
 // GET All users
 router.get("/", authenticateToken, allUsers);
@@ -386,5 +454,8 @@ router.get("/makeadmin/:id", authenticateToken, makeAdmin);
 
 // Update user
 router.put("/update", authenticateToken, updateUser);
+
+// GET contact info
+router.get("/contact/:id", authenticateToken, getContact);
 
 export default router;
