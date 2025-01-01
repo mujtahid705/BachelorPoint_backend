@@ -26,6 +26,10 @@ const addPost = async (req, res) => {
     req.body;
   const { studentId } = req.user;
 
+  if (req.user.status === "not approved") {
+    return res.status(400).json({ error: "Your account is not approved yet!" });
+  }
+
   if (
     !title ||
     !description ||
@@ -98,6 +102,10 @@ const addPost = async (req, res) => {
 
 // Get all posts
 const getPosts = (req, res) => {
+  if (req.user.status === "not approved") {
+    return res.status(400).json({ error: "Your account is not approved yet!" });
+  }
+
   db.query("SELECT * FROM posts", (err, result) => {
     if (err) {
       console.error("Error fetching posts:", err);
@@ -111,6 +119,10 @@ const getPosts = (req, res) => {
 const getPostById = (req, res) => {
   const { id } = req.params;
 
+  if (req.user.status === "not approved") {
+    return res.status(400).json({ error: "Your account is not approved yet!" });
+  }
+
   db.query("SELECT * FROM posts WHERE id = ?", [id], (err, result) => {
     if (err) {
       console.error("Error fetching post:", err);
@@ -123,6 +135,11 @@ const getPostById = (req, res) => {
 // Get own posts
 const getOwnPost = (req, res) => {
   const { studentId } = req.user;
+
+  if (req.user.status === "not approved") {
+    return res.status(400).json({ error: "Your account is not approved yet!" });
+  }
+
   db.query(
     "SELECT * FROM posts WHERE posted_by = ?",
     [studentId],
@@ -175,30 +192,35 @@ const updatePost = async (req, res) => {
   try {
     const imagePaths = [];
 
-    for (const base64Image of images) {
-      // Decode base64 image and save it to the filesystem
-      const imageBuffer = Buffer.from(
-        base64Image.replace(/^data:image\/\w+;base64,/, ""),
-        "base64"
-      );
-      const imagePath = path.join(
-        __dirname,
-        "posts",
-        `${Date.now()}-${Math.random().toString(36).substring(7)}.png`
-      );
+    for (const image of images) {
+      if (image.startsWith("data:image/")) {
+        // Handle base64 image
+        const imageBuffer = Buffer.from(
+          image.replace(/^data:image\/\w+;base64,/, ""),
+          "base64"
+        );
+        const imagePath = path.join(
+          __dirname,
+          "posts",
+          `${Date.now()}-${Math.random().toString(36).substring(7)}.png`
+        );
 
-      // Ensure the uploads directory exists
-      const uploadsDir = path.join(__dirname, "posts");
-      if (!fs.existsSync(uploadsDir)) {
-        fs.mkdirSync(uploadsDir);
+        // Ensure the uploads directory exists
+        const uploadsDir = path.join(__dirname, "posts");
+        if (!fs.existsSync(uploadsDir)) {
+          fs.mkdirSync(uploadsDir);
+        }
+
+        // Write the file to the filesystem
+        await writeFile(imagePath, imageBuffer);
+
+        // Store the relative path of the image
+        const relativeImagePath = `posts/${path.basename(imagePath)}`;
+        imagePaths.push(relativeImagePath);
+      } else {
+        // Handle relative path (existing image)
+        imagePaths.push(image);
       }
-
-      // Write the file to the filesystem
-      await writeFile(imagePath, imageBuffer);
-
-      // Store the relative path of the image
-      const relativeImagePath = `posts/${path.basename(imagePath)}`;
-      imagePaths.push(relativeImagePath);
     }
 
     // Store post data in the database, including the image paths

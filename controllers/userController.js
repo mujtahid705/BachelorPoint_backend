@@ -148,7 +148,12 @@ const loginUser = async (req, res) => {
         }
 
         const token = jwt.sign(
-          { studentId: user.studentId, email: user.email, type: user.type },
+          {
+            studentId: user.studentId,
+            email: user.email,
+            type: user.type,
+            status: user.status,
+          },
           process.env.JWT_SECRET
         );
 
@@ -363,6 +368,10 @@ const updateUser = async (req, res) => {
 const getContact = (req, res) => {
   const { id } = req.params;
   const { studentId } = req.user;
+
+  if (req.user.status === "not approved") {
+    return res.status(400).json({ error: "Your account is not approved yet!" });
+  }
 
   // Get user info based on studentId
   db.query(
